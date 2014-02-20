@@ -815,12 +815,23 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
         // Your code here (instead of the next line).
 		// r = -ENOTTY;
+
+		// File has not locked the ramdisk
+		// return -EINVAL
 		if ((filp->f_flags & F_OSPRD_LOCKED) == 0) {
 			return -EINVAL;
 		} else {
 			osp_spin_lock(&(d->mutex));
 
-			// TODO
+			// clear the lock
+			filp->f_flags &= ~F_OSPRD_LOCKED;
+
+			// remove pid from list
+			if (filp_writable) {
+				removeFromList(&(d->writeLockingPids), current->pid);
+			} else {
+				removeFromList(&(d->readLockingPids), current->pid);
+			}
 
 			osp_spin_unlock(&(d->mutex));
 			wake_up_all(&(d->blockq)); 
