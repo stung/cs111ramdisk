@@ -736,7 +736,6 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 		// requested a WRITE lock
 		if (filp_writable) {	
-			//get a ticket
 			osp_spin_lock(&(d->mutex));
 
 			if (pidInList(d->readLockingPids, current->pid)) { 		
@@ -745,6 +744,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			}
 
 			for_each_open_file(current, checkLocks, d);
+
 			if (d->holdOtherLocks) {
 				d->holdOtherLocks = 0;
 				osp_spin_unlock(&(d->mutex));
@@ -770,7 +770,6 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		
 		// requested a READ lock
 		} else {
-			//get a ticket
 			osp_spin_lock(&(d->mutex));
 
 			if (pidInList(d->writeLockingPids, current->pid)) { 		
@@ -779,6 +778,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			}
 
 			for_each_open_file(current, checkLocks, d);
+
 			if (d->holdOtherLocks) {
 				d->holdOtherLocks = 0;
 				osp_spin_unlock(&(d->mutex));
