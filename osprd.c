@@ -759,11 +759,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 				filp->f_flags |= F_OSPRD_LOCKED;
 				addToList(&(d->writeLockingPids), current->pid);
 
-				// find next usable ticket number so that the next in-order alive process can use
-				grantTicketToNextAliveProcessInOrder(d);
-
 				osp_spin_unlock(&(d->mutex));
-				wake_up_all(&(d->blockq)); 
 				return 0;
 
 			// return -EBUSY if it would block or return deadlock when OSPRDIOCACQUIRE
@@ -797,11 +793,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 				filp->f_flags |= F_OSPRD_LOCKED;
 				addToList(&(d->readLockingPids), current->pid);
 
-				// find next usable ticket number so that the next in-order alive process can use
-				grantTicketToNextAliveProcessInOrder(d);
-
 				osp_spin_unlock(&(d->mutex));
-				wake_up_all(&(d->blockq)); 
 				return 0;
 				
 			// return -EBUSY if it would block or return deadlock when OSPRDIOCACQUIRE
