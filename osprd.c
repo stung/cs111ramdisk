@@ -559,7 +559,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		/*
 		TUAN: Ticket is used to service lock requests in order. Each process maintains a unique
 		local_ticket, starting at ticket_head. To obtain a unique local ticket, each process
-		atomically set its local_ticket equal to ticket_head and then incremenet the ticket_head.
+		automically set its local_ticket equal to ticket_head and then incremenet the ticket_head.
 		Whichever process grasps the lock, it will get the next value of ticket_head and again
 		atomically increments ticket_head. Eventually, we have a list of processes with ticket
 		0, 1, 2, 3.
@@ -731,8 +731,86 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Otherwise, if we can grant the lock request, return 0.
 
 		// Your code here (instead of the next two lines).
-		eprintk("Attempting to try acquire\n");
-		r = -ENOTTY;
+		// eprintk("Attempting to try acquire\n");
+		// r = -ENOTTY;
+
+		// requested a WRITE lock
+		if (filp_writable) {	
+			//get a ticket
+			osp_spin_lock(&(d->mutex));
+
+			if (pidInList(d->readLockingPids, current->pid)) { 		
+				osp_spin_unlock(&(d->mutex));
+				return -EBUSY;
+			}
+
+			for_each_open_file(current, checkLocks, d);
+			if (d->holdOtherLocks) {
+				d->holdOtherLocks = 0;
+				osp_spin_unlock(&(d->mutex));
+				return -EBUSY;
+			}
+
+			// Ensure there are not existing READ or WRITE lock
+			// return 0 if we can grant the lock request
+			if (d->writeLockingPids == NULL && d->readLockingPids == NULL) {
+
+				// claim the lock officially
+				filp->f_flags |= F_OSPRD_LOCKED;
+				addToList(&(d->writeLockingPids), current->pid);
+
+				// find next usable ticket number so that the next in-order alive process can use
+				grantTicketToNextAliveProcessInOrder(d);
+
+				osp_spin_unlock(&(d->mutex));
+				wake_up_all(&(d->blockq)); 
+				return 0;
+
+			// return -EBUSY if it would block or return deadlock when OSPRDIOCACQUIRE
+			} else {
+				osp_spin_unlock(&(d->mutex));
+				return -EBUSY;
+			}
+		
+		// requested a READ lock
+		} else {
+			//get a ticket
+			osp_spin_lock(&(d->mutex));
+
+			if (pidInList(d->readLockingPids, current->pid)) { 		
+				osp_spin_unlock(&(d->mutex));
+				return -EBUSY;
+			}
+
+			for_each_open_file(current, checkLocks, d);
+			if (d->holdOtherLocks) {
+				d->holdOtherLocks = 0;
+				osp_spin_unlock(&(d->mutex));
+				return -EBUSY;
+			}
+
+			// Ensure there are not existing WRITE lock
+			// return 0 if we can grant the lock request
+			if (d->writeLockingPids == NULL) {
+
+				//claim the lock officially
+				filp->f_flags |= F_OSPRD_LOCKED;
+				addToList(&(d->readLockingPids), current->pid);
+
+				// find next usable ticket number so that the next in-order alive process can use
+				grantTicketToNextAliveProcessInOrder(d);
+
+				osp_spin_unlock(&(d->mutex));
+				wake_up_all(&(d->blockq)); 
+				return 0;
+				
+			// return -EBUSY if it would block or return deadlock when OSPRDIOCACQUIRE
+			} else {
+				osp_spin_unlock(&(d->mutex));
+				return -EBUSY;
+			}
+
+		}
 
 	} else if (cmd == OSPRDIOCRELEASE) {
 
@@ -744,7 +822,18 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// you need, and return 0.
 
         // Your code here (instead of the next line).
-		r = -ENOTTY;
+		// r = -ENOTTY;
+		if ((filp->f_flags & F_OSPRD_LOCKED) == 0) {
+			return -EINVAL;
+		} else {
+			osp_spin_lock(&(d->mutex));
+
+			// TODO
+
+			osp_spin_unlock(&(d->mutex));
+			wake_up_all(&(d->blockq)); 
+			return 0;
+		}
 
 	} else
 		r = -ENOTTY; /* unknown command */
