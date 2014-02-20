@@ -773,7 +773,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			//get a ticket
 			osp_spin_lock(&(d->mutex));
 
-			if (pidInList(d->readLockingPids, current->pid)) { 		
+			if (pidInList(d->writeLockingPids, current->pid)) { 		
 				osp_spin_unlock(&(d->mutex));
 				return -EBUSY;
 			}
