@@ -44,21 +44,16 @@ MODULE_AUTHOR("SPENCER TUNG");
 static int nsectors = 32;
 module_param(nsectors, int, 0);
 
-//BEGIN TUAN
 struct pidNode {
 	pid_t pid;
 	struct pidNode* next;
 };
-//END TUAN
 
-//BEGIN TUAN
 struct pidList {
 	struct pidNode* head;
 	int size;
 };
-//END TUAN
 
-//BEGIN TUAN
 //The point is to maintain the list of processes that hold a read lock
 //and the list of processes that hold a write lock.
 void addToList(struct pidList** list, pid_t pid) {
@@ -66,11 +61,6 @@ void addToList(struct pidList** list, pid_t pid) {
 	struct pidNode* newNode;
 	//check if need to initialize list
 	if (*list == NULL) {
-		//TUAN: kzalloc allocates the kernel memory and zero it before return the pointer.
-		//using GFP_ATOMIC to prevent the kernel from block your current memory allocation.
-		//Another commonly used flag is GFP_KERNEL which specifies a normal kernel allocation.
-		//Kernel memory is limited to about 1GB of physical and virtual memory and is not pageable.
-
 		*list = kzalloc(sizeof(struct pidList), GFP_ATOMIC);
 		(*list)->head = NULL;
 		(*list)->size = 0;
@@ -86,19 +76,10 @@ void addToList(struct pidList** list, pid_t pid) {
 		(*list)->head = newNode;
 	}
 	(*list)->size++;
-	//eprintk("after insertion, list is: \n");
-	//struct pidNode* cur = (*list)->head;
-	//while (cur != NULL) {
-		//eprintk("pid: %d\n", cur->pid);
-		//cur = cur->next;
-	//}
 }
-//END TUAN
 
-//BEGIN TUAN
-//Note: pid can appear many places in the list. This function removes all
-//occurances of pid.
-//works even if pid is not in list
+// This function removes all occurances of pid.
+// Works even if pid is not in list
 void removeFromList(struct pidList** list, pid_t pid) {
 
 	struct pidNode* cur;
@@ -113,14 +94,13 @@ void removeFromList(struct pidList** list, pid_t pid) {
 		return;
 	}
 	
-	//TUAN: if pid matches the head node
 	if (cur->pid == pid) {
 		(*list)->head = cur->next;
-		kfree(cur); //TUAN: kfree frees kernel memory
+		kfree(cur); // kfree frees kernel memory
 		(*list)->size--;	
 	}
 
-	//TUAN: remove other occurances of pid in the list.
+	// Remove other occurances of pid in the list.
 	while (cur->next != NULL) {	
 		if (cur->next->pid == pid) {
 			toDelete = cur->next;
@@ -136,21 +116,8 @@ void removeFromList(struct pidList** list, pid_t pid) {
 		kfree(*list);
 		*list = NULL;
 	}
-	//eprintk("after deletion, list is: \n");
-	//if ((*list) == NULL) {
-		//eprintk("empty\n");
-	//}
-	//else {
-	//	struct pidNode* cur = (*list)->head;
-	//	while (cur != NULL) {
-			//eprintk("pid: %d\n", cur->pid);
-	//		cur = cur->next;
-	//	}	
-	//}
 }
-//END TUAN
 
-//BEGIN TUAN
 //returns 1 if pid is in the list, 0 otherwise
 int pidInList(struct pidList* list, pid_t pid) {
 
@@ -167,23 +134,17 @@ int pidInList(struct pidList* list, pid_t pid) {
 	}
 	return 0;
 }	
-//END TUAN	
 
-//BEGIN TUAN
 struct ticketNode {
 	unsigned ticket;
 	struct ticketNode* next;
 };
-//END TUAN
 
-//BEGIN TUAN
 struct ticketList {
 	struct ticketNode* head;
 	int size;
 };
-//END TUAN
 
-//BEGIN TUAN
 void addToTicketList(struct ticketList** list, unsigned ticket) {
 	struct ticketNode* newNode;
 	//check if need to initialize list
@@ -204,10 +165,8 @@ void addToTicketList(struct ticketList** list, unsigned ticket) {
 	}
 	(*list)->size++;
 }
-//END TUAN
 
-//BEGIN TUAN
-//works even if ticket is not in list
+// Works even if ticket is not in list
 void removeFromTicketList(struct ticketList** list, unsigned ticket) {
 
 	struct ticketNode* cur;
@@ -237,15 +196,13 @@ void removeFromTicketList(struct ticketList** list, unsigned ticket) {
 		cur = cur->next;
 	}
 	if ((*list)->size == 0) {
-		//deallocate list so no memory leaks
+		// Deallocate list so no memory leaks
 		kfree(*list);
 		*list = NULL;
 	}	
 }
-//END TUAN
 
-//BEGIN TUAN
-//returns 1 if pid is in the list, 0 otherwise
+// Returns 1 if pid is in the list, 0 otherwise
 int ticketInList(struct ticketList* list, unsigned ticket) {
 
 	struct ticketNode* cur;
@@ -261,7 +218,6 @@ int ticketInList(struct ticketList* list, unsigned ticket) {
 	}
 	return 0;
 }
-//END TUAN
 
 /* The internal representation of our device. */
 typedef struct osprd_info {
@@ -280,17 +236,14 @@ typedef struct osprd_info {
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
 
-	//TUAN BEGIN
 	struct pidList* readLockingPids;
 
 	struct pidList* writeLockingPids;
 
 	struct ticketList* exitedTickets;
 	
-	int holdOtherLocks; //TUAN: current process uses this to see if it holds other locks on
-			    //other open RAM disk files, and not just the current RAM disk
-			    //file that it requests the lock.
-	//TUAN END
+	int holdOtherLocks; // use to see if it holds other locks on
+			    //other open RAM disk files
 
 	// The following elements are used internally; you don't need
 	// to understand them.
@@ -328,7 +281,6 @@ static void for_each_open_file(struct task_struct *task,
 			       osprd_info_t *user_data);
 
 
-//BEGIN TUAN
 //hook function to see if current pid has any locks in other ramdisks - if so, have a possible deadlock
 void checkLocks(struct file *filp, osprd_info_t *d) {
 	osprd_info_t *otherDisk;
@@ -339,36 +291,19 @@ void checkLocks(struct file *filp, osprd_info_t *d) {
 		}
 	}
 }
-//END TUAN
 
 
-
-//BEGIN TUAN
-/*
-TUAN: This block decides which will be the next available ticket.
-It must avoid all exited tickets due to a signal interrupt during wait_event_interruptable
-that other processes go through which cause those processes exit already.
-Example: process 2 is holding the ticket. Process 3 and 4, not obtain the ticket yet, but those
-processes are interrupted and exited while waiting for the ticket. Thus, when process 2 finishes its turn,
-it has to increment the ticket_tail to surpass process 3 and 4. It should not grant the ticket to process
-3 and 4 since those processes already exited. No one will increment ticket_tail, thus causing the permanent "pause".
-Process 2 has to increment ticket_tail to the point where it is sure there is some alive process waiting for that
-ticket_tail.
-*/
 void grantTicketToNextAliveProcessInOrder(osprd_info_t *d) {
-	while (++(d->ticket_tail)) {//TUAN: without this, program will be paused
-					//if some processes already died and can't handle the ticket.
-					//we make sure only pass the alive ticket to alive processes.
+	while (++(d->ticket_tail)) {
 		if (!ticketInList(d->exitedTickets, d->ticket_tail)) {
-			break; //TUAN: good. The next process is still alive to accept this ticket.
+			break;
 		}
 		else {
-			//TUAN: no one hanles this ticket.
+			// no one hanles this ticket.
 			removeFromTicketList(&(d->exitedTickets), d->ticket_tail);
 		}
 	}
 }
-//END TUAN
 
 /*
  * osprd_process_request(d, req)
@@ -377,19 +312,9 @@ void grantTicketToNextAliveProcessInOrder(osprd_info_t *d) {
  */
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
-	//BEGIN TUAN
 	unsigned int requestType;
 	uint8_t* dataPtr;
-	//END TUAN
 
-
-	/*
-	TUAN: a nonzero return value from blk_fs_request() macro says this is
-	a normal filesystem request. Other types of requests (i.e. packet-mode
-	or device-specific diagnostic operations) are not something that sbd
-	supports, so it simply fails any such request.
-	<linux/blkdev.h>
-	*/
 	if (!blk_fs_request(req)) {
 		end_request(req, 0);
 		return;
@@ -403,7 +328,6 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	// Consider the 'req->sector', 'req->current_nr_sectors', and
 	// 'req->buffer' members, and the rq_data_dir() function.
 
-	//BEGIN TUAN
 	/*
 	We first need to determine if this is a read or write request
 	The macro rq_data_dir(rq) will tell us whether this is a read or write
@@ -412,8 +336,8 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	requestType = rq_data_dir(req);
 
 	//get pointer to data on disk requested by the user
-	//TUAN: req->sector => next sector to read from or write to
-	//      (req->sector)*SECTOR_SIZE => This computes the offset
+	// req->sector => next sector to read from or write to
+	// (req->sector)*SECTOR_SIZE => This computes the offset
 	dataPtr = d->data + (req->sector)*SECTOR_SIZE;
 
 	if (requestType == READ) {
@@ -425,7 +349,6 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 		//copy contents of request buffer into data buffer
 		memcpy((void*) dataPtr, (void*)req->buffer, req->current_nr_sectors * SECTOR_SIZE);
 	}
-	//END TUAN
 
 	end_request(req, 1);
 }
@@ -457,19 +380,16 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 
 		// Your code here.
 
-		//BEGIN TUAN
 
 		if (d == NULL) {
 			return 1;
-			//TUAN Note: return -EINVAL here causes test case 9 to pause
 		}
 
 		//Below part is identical to the implementation of OSPRDIOCRELEASE
 
 		osp_spin_lock(&(d->mutex));
-		//TUAN Note: pidInList returns 1 if pid is in the list, 0 otherwise.
 
-		//TUAN: If the file hasn't locked the ramdisk, return -EINVAL.
+		// If the file hasn't locked the ramdisk, return -EINVAL.
 		if (!pidInList(d->writeLockingPids, current->pid) && !(pidInList(d->readLockingPids, current->pid))) {
 			osp_spin_unlock(&(d->mutex));
 			return -EINVAL;
@@ -483,7 +403,7 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 			removeFromList(&d->readLockingPids, current->pid);
 		}
 
-		// TUAN: Clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
+		// Clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
 		if (d->readLockingPids == NULL && d->writeLockingPids == NULL) {
 			filp->f_flags &= !F_OSPRD_LOCKED;
 		}
@@ -491,7 +411,6 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 		osp_spin_unlock(&(d->mutex));
 		wake_up_all(&(d->blockq));
 
-		//END TUAN
 	}
 	return 0;
 }
@@ -557,7 +476,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 
 		/*
-		TUAN: Ticket is used to service lock requests in order. Each process maintains a unique
+		Ticket is used to service lock requests in order. Each process maintains a unique
 		local_ticket, starting at ticket_head. To obtain a unique local ticket, each process
 		automically set its local_ticket equal to ticket_head and then incremenet the ticket_head.
 		Whichever process grasps the lock, it will get the next value of ticket_head and again
@@ -587,14 +506,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			}
 
 			//also deadlock if I hold a lock in a different file (could be overkill, though!)
-			for_each_open_file(current, checkLocks, d); //TUAN: checklocks will set d->holdOtherLocks to 1
-						//if current process also holds a read or write lock in other RAM disks.
-			
-			//TUAN: The skeleton code provides the implementation for_each_open_file
-			//void checkLocks(struct file *filp, osprd_info_t *d); => We implement this
-			//The third argument from for_each_open_file and all open files from the first argument
-			//will be passed into checkLocks
-			
+			for_each_open_file(current, checkLocks, d); 
 
 			if (d->holdOtherLocks) {
 				d->holdOtherLocks = 0;
@@ -603,7 +515,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			}
 
 			/*
-			TUAN: It is considered invalid to request the same write lock that you already hold
+			It is considered invalid to request the same write lock that you already hold
 			in your current RAM disk.
 			*/
 			if (pidInList(d->writeLockingPids, current->pid)) {
@@ -614,7 +526,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			osp_spin_unlock(&(d->mutex)); 
 
 			/*
-			TUAN: wait_event_interruptible. The first argument is the wait queue. The second argument is the condition to wake up.
+			wait_event_interruptible. The first argument is the wait queue. The second argument is the condition to wake up.
 			The process wakes up when the condition is true or a signal is received.
 			The function returns 0 if the condition is true. Return -ERESTARTSYS if a signal is received.
 			*/
@@ -628,12 +540,8 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 				}
 				else  {  //mark my ticket as not usable before process exits
 					addToTicketList(&(d->exitedTickets), myTicket);
-					//TUAN: this is important because when other process grants the ticket
-					//It makes sure it not grant the ticket to processes that already exited.
-					//It do that by incrementing ticket_tail and make sure ticket_tail not
-					//match the already exited ticket.
 				}
-				return -ERESTARTSYS; //TUAN: means your system call is restartable. The process is considered exited/died.
+				return -ERESTARTSYS;
 			}
 
 			//if I arrive here, I have the ticket to proceed, and no one else holds a read or write lock
@@ -642,17 +550,13 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			//claim the lock officially
 			filp->f_flags |= F_OSPRD_LOCKED;
 
-			//TUAN: we keep track of the ID processes that are holding the write lock
-			//Later on, to detect deadlock for the current process, we look up this list
-			//to see if we already have the read or write lock there.
 			addToList(&(d->writeLockingPids), current->pid);
 
-			//TUAN: find next usable ticket number so that the next in-order alive process can use
+			// find next usable ticket number so that the next in-order alive process can use
 			grantTicketToNextAliveProcessInOrder(d);
 
 			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq)); //TUAN: wait up all processes in the wait queue d->blockq and evaluate the condition
-					//in wait_event_interruptable for those processes that go to sleep when invoking this function.
+			wake_up_all(&(d->blockq)); 
 			return 0;
 		}
 
@@ -670,22 +574,14 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			}
 
 			//also deadlock if I hold a lock in a different file (could be overkill, though!)
-			/*
-			TUAN: There's only one read lock and one write lock used across different RAM disks.
-			If the read lock or write lock is used by the current process in other RAM disks,
-			that would be a deadlock as well => same situation, it waits directly for itself.
-			*/
 			for_each_open_file(current, checkLocks, d);
+
 			if (d->holdOtherLocks) {
 				d->holdOtherLocks = 0;
 				osp_spin_unlock(&(d->mutex));
 				return -EDEADLK;
 			}
 
-			/*
-			TUAN: It is considered invalid to request the same read lock that you already hold
-			in your current RAM disk.
-			*/
 			if (pidInList(d->readLockingPids, current->pid)) {
 				osp_spin_unlock(&(d->mutex));
 				return -EINVAL;
@@ -713,12 +609,10 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			filp->f_flags |= F_OSPRD_LOCKED;
 			addToList(&(d->readLockingPids), current->pid);
 
-			//TUAN: find next usable ticket number so that the next in-order alive process can use
 			grantTicketToNextAliveProcessInOrder(d);
 
 			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq)); //TUAN: wake up all the processes that are waiting for the ticket
-						   //by setting the processes in the run queue to runnable state.
+			wake_up_all(&(d->blockq));
 			return 0;
 		}
 
